@@ -1,23 +1,20 @@
 import argparse
 import os
 import time
-import math
-import collections
 from tqdm import tqdm
 
 import torch
-import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
 import numpy as np
-import pandas as pd
 
 from reparameterization import apply_weight_norm, remove_weight_norm
 
 from model import SentimentClassifier
-from configure_data import configure_data
-from arguments import add_general_args, add_model_args, add_classifier_model_args, add_run_classifier_args
+from arguments import (add_general_args, add_model_args, add_classifier_model_args,
+                       add_run_classifier_args)
+
 
 def get_data_and_args():
     parser = argparse.ArgumentParser(description='PyTorch Sentiment Discovery Classification')
@@ -28,7 +25,7 @@ def get_data_and_args():
     args = parser.parse_args()
 
     args.cuda = torch.cuda.is_available()
-    args.shuffle=False
+    args.shuffle = False
 
     if args.seed is not -1:
         torch.manual_seed(args.seed)
@@ -39,6 +36,7 @@ def get_data_and_args():
     args.data_size = tokenizer.num_tokens
     args.padding_idx = tokenizer.command_name_map['pad'].Id
     return (train_data, val_data, test_data), tokenizer, args
+
 
 def get_model(args):
 
@@ -54,21 +52,25 @@ def get_model(args):
     ntokens = model_args.data_size
     concat_pools = model_args.concat_max, model_args.concat_min, model_args.concat_mean
     if args.model == 'transformer':
-        model = SentimentClassifier(model_args.model, ntokens, None, None, None, model_args.classifier_hidden_layers, model_args.classifier_dropout,
-                                      None, concat_pools, False, model_args)
+        model = SentimentClassifier(
+            model_args.model, ntokens, None, None, None, model_args.classifier_hidden_layers,
+            model_args.classifier_dropout, None, concat_pools, False, model_args)
     else:
-        model = SentimentClassifier(model_args.model, ntokens, model_args.emsize, model_args.nhid, model_args.nlayers,
-                                      model_args.classifier_hidden_layers, model_args.classifier_dropout, model_args.all_layers, concat_pools, False, model_args)
+        model = SentimentClassifier(model_args.model, ntokens, model_args.emsize,
+                                    model_args.nhid, model_args.nlayers,
+                                    model_args.classifier_hidden_layers,
+                                    model_args.classifier_dropout, model_args.all_layers,
+                                    concat_pools, False, model_args)
     args.heads_per_class = model_args.heads_per_class
     args.use_softmax = model_args.use_softmax
     try:
         args.classes = list(model_args.classes)
-    except:
+    except:  # NOQA: E722
         args.classes = [args.label_key]
 
     try:
         args.dual_thresh = model_args.dual_thresh and not model_args.joint_binary_train
-    except:
+    except:  # NOQA: E722
         args.dual_thresh = False
 
     if args.cuda:
@@ -80,8 +82,9 @@ def get_model(args):
     if sd is not None:
         try:
             model.load_state_dict(sd)
-        except:
-            # if state dict has weight normalized parameters apply and remove weight norm to model while loading sd
+        except:  # NOQA: E722
+            # if state dict has weight normalized parameters apply and
+            # remove weight norm to model while loading sd
             if hasattr(model.lm_encoder, 'rnn'):
                 apply_weight_norm(model.lm_encoder.rnn)
             else:
@@ -94,9 +97,10 @@ def get_model(args):
         model.set_neurons(args.neurons)
     return model
 
+
 # uses similar function as transform from transfer.py
 def classify(model, text, args):
-    # Make sure to set *both* parts of the model to .eval() mode. 
+    # Make sure to set *both* parts of the model to .eval() mode.
     model.lm_encoder.eval()
     model.classifier.eval()
     # Initialize data, append results
@@ -118,19 +122,21 @@ def classify(model, text, args):
             timesteps = torch.clamp(timesteps, max=args.max_seq_len)
         if args.cuda:
             text, timesteps, labels = text.cuda(), timesteps.cuda(), labels.cuda()
-        return text.t(), labels, timesteps-1
+        return text.t(), labels, timesteps - 1
 
     def get_outs(text_batch, length_batch):
+        from ipdb import set_trace; set_trace()  # NOQA
         if args.model.lower() == 'transformer':
-            class_out, (lm_or_encoder_out, state) = model(text_batch, length_batch, args.get_hidden)
+            class_out, (lm_or_encoder_out, state) = model(
+                text_batch, length_batch, args.get_hidden)
         else:
             model.lm_encoder.rnn.reset_hidden(args.batch_size)
             for _ in range(1 + args.num_hidden_warmup):
-                class_out, (lm_or_encoder_out, state) = model(text_batch, length_batch, args.get_hidden)
+                class_out, (lm_or_encoder_out, state) = model(
+                    text_batch, length_batch, args.get_hidden)
         if args.use_softmax and args.heads_per_class == 1:
             class_out = F.softmax(class_out, -1)
         return class_out, (lm_or_encoder_out, state)
-
 
     tstart = start = time.time()
     n = 0
@@ -168,20 +174,21 @@ def classify(model, text, args):
             total_time = end - tstart
             start = end
 
-            s_per_batch = total_time / (i+1)
-            timeleft = (len_ds - (i+1)) * s_per_batch
-            ch_per_s = float(num_char) / elapsed_time
+            s_per_batch = total_time / (i + 1)
+            timeleft = (len_ds - (i + 1)) * s_per_batch  # NOQA: F841
+            ch_per_s = float(num_char) / elapsed_time  # NOQA: F841
 
     if not first_label:
-        labels = (np.concatenate(labels)) #.flatten())
-        label_probs = (np.concatenate(label_probs)) #.flatten())
+        labels = (np.concatenate(labels))  # .flatten())
+        label_probs = (np.concatenate(label_probs))  # .flatten())
         if heads_per_class > 1:
             stds = (np.concatenate(stds))
         else:
             stds = np.zeros_like(labels)
     print('%0.3f seconds to transform %d examples' %
-                  (time.time() - tstart, n))
+          (time.time() - tstart, n))
     return labels, label_probs, stds
+
 
 def make_header(classes, heads_per_class=1, softmax=False, dual_thresh=False):
     header = []
@@ -198,6 +205,7 @@ def make_header(classes, heads_per_class=1, softmax=False, dual_thresh=False):
         header.append('neutral prob')
     return header
 
+
 def get_row(pred, prob, std, classes, heads_per_class=1, softmax=False, dual_thresh=False):
     row = []
     if softmax:
@@ -211,13 +219,15 @@ def get_row(pred, prob, std, classes, heads_per_class=1, softmax=False, dual_thr
     if dual_thresh:
         row.append(pred[2])
         row.append(prob[2])
-    return row 
+    return row
+
 
 def get_writer(preds, probs, stds, classes, heads_per_class=1, softmax=False, dual_thresh=False):
     header = make_header(classes, heads_per_class, softmax, dual_thresh)
     yield header
     for pred, prob, std in zip(preds, probs, stds):
         yield get_row(pred, prob, std, classes, heads_per_class, softmax, dual_thresh)
+
 
 def main():
     (train_data, val_data, test_data), tokenizer, args = get_data_and_args()
@@ -228,17 +238,19 @@ def main():
     save_root = ''
     save_root = os.path.join(save_root, args.save_probs)
 
-    print('saving predicted probabilities to '+save_root)
+    print('saving predicted probabilities to ' + save_root)
     np.save(save_root, ypred)
-    np.save(save_root+'.prob', yprob)
-    np.save(save_root+'.std', ystd)
+    np.save(save_root + '.prob', yprob)
+    np.save(save_root + '.std', ystd)
 
     if args.write_results is None or args.write_results == '':
         exit()
 
-    print('writing results to '+args.write_results)
-    writer = get_writer(ypred, yprob, ystd, args.classes, args.heads_per_class, args.use_softmax, args.dual_thresh)
+    print('writing results to ' + args.write_results)
+    writer = get_writer(ypred, yprob, ystd, args.classes, args.heads_per_class,
+                        args.use_softmax, args.dual_thresh)
     train_data.dataset.write(writer, path=args.write_results)
+
 
 if __name__ == '__main__':
     main()
