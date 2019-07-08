@@ -17,7 +17,7 @@ from joblib import load
 from sqlalchemy import create_engine
 
 
-CUDA = False
+CUDA = True
 REMOVE = {'https'} | ENGLISH_STOP_WORDS
 nlp = spacy.load('en_core_web_sm')
 
@@ -331,7 +331,7 @@ def get_pos_sent_prob(df):
 def make_sentiment_over_time(df, timecol="created_at",
                              out="avg_sentiment_trend.json",
                              mode="hourly"):
-    df[timecol] = pd.to_datetime(df[timecol], utc=True)
+    df[timecol] = pd.to_datetime(df[timecol], utc=True, errors="ignore")
     latest = df[timecol].max()
     payload = []
     if mode == "hourly":
@@ -452,3 +452,9 @@ def main(fpath):
 if __name__ == "__main__":
     import sys
     main(sys.argv[1])
+
+
+# TODO:
+# 1. Needs to be usable from Command line
+# 2. Reduce amount of hardcoding
+# 3. Make this independent of Twitter
